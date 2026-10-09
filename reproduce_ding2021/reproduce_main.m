@@ -146,29 +146,73 @@ saveas(fig, fullfile('results', 'fig_spectrum_general.png'));
 close(fig);
 
 %% ============ [5] 文献实验四种工况频移曲线对比 ============
-% 工况: (γ, d, φ) = (20°,0,0) (20°,1mm,0) (20°,1mm,30°) + 对准
-cases = { {20, 0,     0,  'γ=20°, d=0, φ=0'}, ...
-          {20, 1e-3,  0,  'γ=20°, d=1mm, φ=0'}, ...
-          {20, 1e-3, 30,  'γ=20°, d=1mm, φ=30°'} };
+% 原文实验工况（电机设定 53 Hz, l=±18）:
+%   工况1(对准): γ≈0,  d=0,   φ=0    实验频移 1906.74 Hz -> 52.96 Hz (<0.1%)
+%   工况2:       γ=20°, d=0,   φ=0    实验峰 f_max=2012, f_min=1801
+%   工况3:       γ=20°, d=1mm, φ=0    特征: Δf0=Δfπ=1804, f_max=2514, f_min=1538
+%   工况4:       γ=20°, d=1mm, φ=30°  特征: 2443/2018/1591/1640
+f_rot_exp = 53;                 % 实验电机设定频率 (Hz)
+Omega_exp = 2*pi*f_rot_exp;
+base_exp  = l*Omega_exp/pi;     % 叠加态对准频移 lΩ/π = 1908 Hz
 
-fig = figure('Position', [100 100 800 560], 'Color', 'w');
+% 原文实验特征频移（从图5/图6读出）
+exp_cases = {
+    struct('tag','工况2: γ=20°,d=0,φ=0',    'g',20,'d',0,   'p',0,  'spec',[2012 1801], 'fmod',1903.58, 'fest',52.88, 'err',0.23, 'feat',[1801 2012 1801 2012]);
+    struct('tag','工况3: γ=20°,d=1mm,φ=0',  'g',20,'d',1e-3,'p',0,  'spec',[2514 1538], 'fmod',1911.78, 'fest',53.11, 'err',0.21, 'feat',[1804 2514 1804 1538]);
+    struct('tag','工况4: γ=20°,d=1mm,φ=30°','g',20,'d',1e-3,'p',30, 'spec',[2443 2018 1591 1640], 'fmod',1919.35, 'fest',53.32, 'err',0.6, 'feat',[2018 2443 1591 1640]);
+};
+
+fprintf('\n===== [5] 原文实验四种工况理论验证 =====\n');
+fprintf('叠加态对准频移 lΩ/π = %.2f Hz (Ω=2π×53)\n\n', base_exp);
+
+fig = figure('Position', [100 100 860 620], 'Color', 'w');
 cols = lines(4);
 hold on;
-for k = 1:numel(cases)
-    c = cases{k};
-    g_ = c{1}*pi/180; d_ = c{2}; p_ = c{3}*pi/180;
-    Df_k2 = base .* ( sin(theta).^2/cos(g_) + cos(g_).*cos(theta).^2 ...
-                    + (d_/r).*(sin(theta).*cos(p_) - cos(theta).*sin(p_).*cos(g_)) );
-    plot(theta, Df_k2, '-', 'Color', cols(k,:), 'LineWidth', 1.8, 'DisplayName', c{4});
+% 工况1 对准
+plot(theta, base_exp*ones(size(theta)), '-', 'Color', cols(1,:), 'LineWidth', 1.8, 'DisplayName', '对准 γ≈0');
+% 工况2-4 理论曲线 + 实验特征点
+for k = 1:numel(exp_cases)
+    c = exp_cases{k};
+    g_ = c.g*pi/180; d_ = c.d; p_ = c.p*pi/180;
+    Df_k2 = base_exp .* ( sin(theta).^2/cos(g_) + cos(g_).*cos(theta).^2 ...
+                        + (d_/r).*(sin(theta).*cos(p_) - cos(theta).*sin(p_).*cos(g_)) );
+    plot(theta, Df_k2, '-', 'Color', cols(k+1,:), 'LineWidth', 1.6, 'DisplayName', sprintf('\\gamma=%d°, d=%dmm, \\phi=%d°', c.g, c.d*1000, c.p));
+    % 理论特征点值
+    Df_th = base_exp * [ (cos(g_) - (d_/r)*sin(p_)*cos(g_)), ...
+                         (1/cos(g_) + (d_/r)*cos(p_)), ...
+                         (cos(g_) + (d_/r)*sin(p_)*cos(g_)), ...
+                         (1/cos(g_) - (d_/r)*cos(p_)) ];
+    % 实验特征点（红点）
+    th_feat = [0 pi/2 pi 3*pi/2];
+    for j = 1:numel(c.feat)
+        plot(th_feat(j), c.feat(j), 'o', 'Color', cols(k+1,:), 'MarkerSize', 7, 'MarkerFaceColor', cols(k+1,:));
+    end
+    % 打印理论特征值与实验值对照
+    fprintf('%s\n', c.tag);
+    fprintf('  理论特征值: θ=0:%.1f  θ=π/2:%.1f  θ=π:%.1f  θ=3π/2:%.1f Hz\n', Df_th(1), Df_th(2), Df_th(3), Df_th(4));
+    fprintf('  实验特征值: %s Hz\n', num2str(c.feat, '%.0f '));
+    % 复算 f_mod 与转速误差（公式12 几何平均）
+    f_mod_c = sqrt( ((c.feat(1)+c.feat(3))/2) * ((c.feat(2)+c.feat(4))/2) );
+    f_est_c = f_mod_c/(2*l);
+    err_c   = abs(f_est_c - f_rot_exp)/f_rot_exp*100;
+    fprintf('  复算 f_mod=%.2f Hz (原文 %.2f), f=%.2f Hz (原文 %.2f), 误差 %.2f%% (原文 %.2f%%)\n\n', ...
+        f_mod_c, c.fmod, f_est_c, c.fest, err_c, c.err);
 end
-yline(base, 'k--', 'LineWidth', 1.2, 'DisplayName', '对准 lΩ/π');
 xlim([0 2*pi]); xticks(0:pi/2:2*pi);
 xticklabels({'0','π/2','π','3π/2','2π'});
 grid on; box on;
 xlabel('\theta / rad'); ylabel('Rotational frequency / Hz');
-title('不同入射条件下的旋转多普勒频移分布 (l=±18, f=50Hz)');
+title('文献实验四种工况理论频移曲线与实验特征点 (l=±18, f=53Hz)');
 legend('Location', 'southeast');
 saveas(fig, fullfile('results', 'fig_cases_compare.png'));
 close(fig);
+
+%% ============ [6] 对准工况实验验证 ============
+% 原文图5: 对准入射实验频移 1906.74 Hz -> f=52.96 Hz (误差<0.1%)
+f_detect = 1906.74;
+f_est_aligned = f_detect/(2*l);
+fprintf('\n===== [6] 对准工况 (原文图5) =====\n');
+fprintf('实验频移 %.2f Hz -> f=%.2f Hz (设定 53 Hz, 误差 %.2f%%)\n\n', ...
+    f_detect, f_est_aligned, abs(f_est_aligned-53)/53*100);
 
 fprintf('\n===== 复现完成，图片已保存到 results/ =====\n');
